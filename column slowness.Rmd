@@ -1,0 +1,156 @@
+---
+title: "slow column"
+author: "Doris Amoakohene"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r}
+library(atime)
+library(data.table)
+library(bench)
+library(reshape2)
+```
+
+
+```{r}
+library(bench)
+x <- data.frame(a = runif(10000), b= as.character(runif(10000)))
+index <- runif(10000) <= 0.5
+mark(x[index, "a"], x[["a"]][index])
+# A tibble: 2 × 13
+#    expression      min median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+#    <bch:expr>   <bch:> <bch:>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+# 1 "x[index, \… 78.1µs 80.6µs    11587.    98.4KB     21.2  5469    10      472ms
+# 2 "x[[\"a\"]]…   71µs 73.2µs    13240.    98.4KB     23.5  6207    11      469ms
+# More or less the same !
+
+
+library(data.table)
+x <- as.data.table(x)
+mark(x[index, a], x[["a"]][index])
+# A tibble: 2 × 13
+#   expression     min  median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+#   <bch:expr> <bch:t> <bch:t>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+# 1 "x[index,… 360.4µs 377.1µs     2403.   219.3KB     8.28  1161     4      483ms
+# 2 "x[[\"a\"…  71.4µs  73.9µs    12920.    98.4KB    23.9   5949    11      460ms
+# Five times slower !!!
+
+```
+```{r}
+library(bench)
+df <- data.frame(a = runif(10000), b= as.character(runif(10000)))
+index <- runif(10000) <= 0.5
+library(data.table)
+dt <- as.data.table(df)
+mark(
+  df[index, "a"],
+  df[["a"]][index],
+  dt[index, a],
+  dt[["a"]][index])
+```
+```{r}
+library(bench)
+df <- data.frame(a = runif(10000), b= as.character(runif(10000)))
+index <- runif(10000) <= 0.5
+library(data.table)
+dt <- as.data.table(df)
+mark(
+  df[index, "a"],
+  df[["a"]][index],
+  dt[index, a],
+  dt[["a"]][index],
+  as.list(dt[index, "a"])$a)
+```
+
+```{r}
+atime.list <- atime::atime_versions(
+pkg.path="C:/Users/Doris Afriyie/data.table",
+pkg.edit.fun=function(old.Package, new.Package, sha, new.pkg.path){
+      pkg_find_replace <- function(glob, FIND, REPLACE){
+        atime::glob_find_replace(file.path(new.pkg.path, glob), FIND, REPLACE)
+      }
+      Package_regex <- gsub(".", "_?", old.Package, fixed=TRUE)
+      Package_ <- gsub(".", "_", old.Package, fixed=TRUE)
+      new.Package_ <- paste0(Package_, "_", sha)
+      pkg_find_replace(
+        "DESCRIPTION", 
+        paste0("Package:\\s+", old.Package),
+        paste("Package:", new.Package))
+      pkg_find_replace(
+        file.path("src","Makevars.*in"),
+        Package_regex,
+        new.Package_)
+      pkg_find_replace(
+        file.path("R", "onLoad.R"),
+        Package_regex,
+        new.Package_)
+      pkg_find_replace(
+        file.path("R", "onLoad.R"),
+        sprintf('packageVersion\\("%s"\\)', old.Package),
+        sprintf('packageVersion\\("%s"\\)', new.Package))
+      pkg_find_replace(
+        file.path("src", "init.c"),
+        paste0("R_init_", Package_regex),
+        paste0("R_init_", gsub("[.]", "_", new.Package_)))
+      pkg_find_replace(
+        "NAMESPACE",
+        sprintf('useDynLib\\("?%s"?', Package_regex),
+        paste0('useDynLib(', new.Package_))
+    },
+  N=10^seq(3,8),
+  setup= {
+    # Base R setup
+    set.seed(1L)
+    x <- data.frame(
+      a = runif(N),
+      b = as.character(runif(N))
+    )
+    index <- runif(N) <= 0.5
+    
+    # data.table setup
+    set.seed(1L)
+    dt <- data.table(
+      a = runif(N),
+      b = as.character(runif(N))
+    )
+    index_dt <- runif(N) <= 0.5
+    
+    list(
+      base_r = list(x = x, index = index),
+      data_table = list(dt = dt, index = index_dt)
+    )
+  },
+  expr={
+    # Base R approach
+    base_r_result <- mark(
+      x[index, "a"],
+      x[["a"]][index]
+    )
+    
+    # data.table approach
+    data_table_result <- mark(
+      {
+        dt_mod[, N := .N, by = g]
+      },
+      dt[["N"]][index_dt]
+    )
+    
+    # Return the benchmark results
+    list(
+      base_r = base_r_result,
+      data_table = data_table_result
+    )
+  }
+)
+
+
+```
+
+```{r}
+atime.list
+```
+```{r}
+plot(atime.list)
+```
+
