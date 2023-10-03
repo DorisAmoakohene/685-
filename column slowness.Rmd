@@ -1,0 +1,40 @@
+---
+title: "slow column"
+author: "Doris Amoakohene"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r}
+library(atime)
+library(data.table)
+library(bench)
+
+```
+
+https://github.com/Rdatatable/data.table/issues/5650#top
+
+```{r}
+atime.list <- atime::atime(
+  N=10^seq(3,8),
+  setup={
+    set.seed(1L)
+    df <- data.frame(
+      a = runif(N),
+      b = as.character(runif(N))
+    )
+    index <- runif(N) <= 0.5
+    dt <- as.data.table(df)
+  },
+  "df["=df[index, "a"],
+  "df[["=df[["a"]][index],
+  "dt["=dt[index, "a"],
+  "dt[["=dt[["a"]][index],
+  verbose=2)
+```
+
+
+```{r}
+plot(atime.list)
+```
+
