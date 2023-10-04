@@ -1,0 +1,61 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+https://github.com/Rdatatable/data.table/issues/5636
+
+```{r}
+library(atime)
+library(data.table)
+library(bench)
+
+```
+
+```{r}
+
+
+parameters <- list(types = c(p1 = "r", p2 = "r", p3 = "r", dummy = "c"),
+                   digits = 4)
+n <- 10000
+newConfigurations <- data.table(p1 = runif(n), p2 = runif(n), p3 = runif(n),
+                                dummy = sample(c("d1", "d2"), n, replace = TRUE))
+
+repair_sum2one <- function(configuration, parameters) {
+  isreal <- names(which(parameters$types[colnames(configuration)] == "r"))
+  digits <- parameters$digits[isreal]
+  c_real <- unlist(configuration[isreal])
+  c_real <- c_real / sum(c_real)
+  c_real[-1] <- round(c_real[-1], digits[-1])
+  c_real[1] <- 1 - sum(c_real[-1])
+  configuration[isreal] <- c_real
+  return(configuration)
+}
+
+atime.list <- atime::atime(
+  N = nrow(newConfigurations),
+  setup = {
+    parameters <- list(types = c(p1 = "r", p2 = "r", p3 = "r", dummy = "c"),
+                       digits = 4)
+    n <- 10000
+    newConfigurations <- data.table(p1 = runif(n), p2 = runif(n), p3 = runif(n),
+                                    dummy = sample(c("d1", "d2"), n, replace = TRUE))
+  },
+  "repair_sum2one" = {
+    j <- colnames(newConfigurations)
+    for (i in seq_len(nrow(newConfigurations))) {
+      set(newConfigurations, i, j = j,
+          value = repair_sum2one(as.data.frame(newConfigurations[i]), parameters))
+    }
+  },
+  verbose = 2
+)
+
+
+```
+```{r}
+plot(atime.list)
+
+```
+
