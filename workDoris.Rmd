@@ -13,20 +13,16 @@ library(git2r)
 ```
 
 ```{r}
-# Set the local directory where you want to clone the repository
-#git.data <- "/path/to/other/empty/directory"
-
-# Set the URL of the Git repository
-#git.data.url <- "https://github.com/Rdatatable/data.table"
-
-# Clone the repository
-#clone(git.data.url,git.data)
+  tdir <- tempfile()
+  dir.create(tdir)
+  git2r::clone("https://github.com/Rdatatable/data.table", tdir)
+  
 ```
 
 ```{r}
 
 atime.list <- atime::atime_versions(
-pkg.path="C:/Users/Doris Afriyie/data.table",
+pkg.path=tdir,
 pkg.edit.fun=function(old.Package, new.Package, sha, new.pkg.path){
       pkg_find_replace <- function(glob, FIND, REPLACE){
         atime::glob_find_replace(file.path(new.pkg.path, glob), FIND, REPLACE)
