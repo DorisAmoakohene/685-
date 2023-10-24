@@ -1,0 +1,13 @@
+---
+title: 'Script for Benchmarking Exercise #5641'
+author: "Doris Amoakohene"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Script for Benchmarking Exercise #5641
+https://github.com/Rdatatable/data.table/pull/4851/commits
+```{r}
+
+```
+

@@ -1,0 +1,212 @@
+---
+title: "Modify the atime vignette"
+author: "Doris Amoakohene"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Part one;
+- Modify atime compare-data.table-tidyverse vignette, and analyze efficiency of packages such as polars, arrow, collapse, spark.
+To modify the atime vignette in the compare-data.table-tidyverse package and analyze the efficiency of packages such as polars, arrow, collapse, and spark, you would need to perform the following steps:
+
+
+Install the required packages: Install the compare-data.table-tidyverse, polars, arrow, collapse, and spark packages if you haven't already done so.
+
+```{r}
+install.packages("data.table")
+install.packages("atime")
+install.packages("polars")
+install.packages("arrow")
+install.packages("collapse")
+install.packages("spark")
+```
+
+
+Load the necessary libraries: Load the libraries required for the analysis, including compare-data.table-tidyverse, polars, arrow, collapse, and spark.
+
+loading installed  packages 
+```{r}
+library(data.table)
+library(tidyverse)
+library(atime)
+#library(polars)
+library(arrow)
+library(collapse)
+library(sparklyr)
+library(remotes)
+```
+
+
+Locate the atime vignette: Find the atime vignette within the compare-data.table-tidyverse package documentation. The vignette should provide examples and explanations of the atime functionality.
+
+```{r}
+
+#atime Vignette
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+```{r}
+tdir <- tempfile()
+dir.create(tdir)
+git2r::clone("https://github.com/tdhock/data.table", tdir)
+```
+
+```{r}
+run.atime <- function(TDIR){
+  atime::atime_versions(
+    pkg.path=TDIR,
+    pkg.edit.fun=function(old.Package, new.Package, sha, new.pkg.path){
+      pkg_find_replace <- function(glob, FIND, REPLACE){
+        atime::glob_find_replace(file.path(new.pkg.path, glob), FIND, REPLACE)
+      }
+      Package_regex <- gsub(".", "_?", old.Package, fixed=TRUE)
+      Package_ <- gsub(".", "_", old.Package, fixed=TRUE)
+      new.Package_ <- paste0(Package_, "_", sha)
+      pkg_find_replace(
+        "DESCRIPTION", 
+        paste0("Package:\\s+", old.Package),
+        paste("Package:", new.Package))
+      pkg_find_replace(
+        file.path("src","Makevars.*in"),
+        Package_regex,
+        new.Package_)
+      pkg_find_replace(
+        file.path("R", "onLoad.R"),
+        Package_regex,
+        new.Package_)
+      pkg_find_replace(
+        file.path("R", "onLoad.R"),
+        sprintf('packageVersion\\("%s"\\)', old.Package),
+        sprintf('packageVersion\\("%s"\\)', new.Package))
+      pkg_find_replace(
+        file.path("src", "init.c"),
+        paste0("R_init_", Package_regex),
+        paste0("R_init_", gsub("[.]", "_", new.Package_)))
+      pkg_find_replace(
+        "NAMESPACE",
+        sprintf('useDynLib\\("?%s"?', Package_regex),
+        paste0('useDynLib(', new.Package_))
+    },
+    N = 10^seq(3, 8),
+    setup={
+      n <- N/100
+      set.seed(1L)
+      dt <- data.table(
+        g = sample(seq_len(n), N, TRUE),
+        x = runif(N),
+        key = "g")
+    },
+    expr={
+      dt_mod <- copy(dt)
+      data.table:::`[.data.table`(dt_mod, , N := .N, by = g)
+    },
+    verbose = TRUE,
+    "1.14.0 on CRAN. Bump to 1.14.1"="263b53e50241914a22f7ba6a139b52162c9d7927",
+    "1.14.3 dev master"="c4a2085e35689a108d67dacb2f8261e4964d7e12",
+    "1.14.4"="1.14.4")
+}
+atime.list <- if(requireNamespace("callr")){
+  requireNamespace("atime")
+  callr::r(run.atime, list(tdir))
+}else{
+  run.atime(tdir)
+}
+```
+
+The results can be plotted using the code below,
+
+```{r}
+best.list <- atime::references_best(atime.list)
+both.dt <- best.list$meas
+if(require(ggplot2)){
+  hline.df <- with(atime.list, data.frame(seconds.limit, unit="seconds"))
+  gg <- ggplot()+
+    theme_bw()+
+    facet_grid(unit ~ ., scales="free")+
+    geom_hline(aes(
+      yintercept=seconds.limit),
+      color="grey",
+      data=hline.df)+
+    geom_line(aes(
+      N, empirical, color=expr.name),
+      data=best.list$meas)+
+    geom_ribbon(aes(
+      N, ymin=min, ymax=max, fill=expr.name),
+      data=best.list$meas[unit=="seconds"],
+      alpha=0.5)+
+    scale_x_log10()+
+    scale_y_log10("median line, min/max band")
+  if(require(directlabels)){
+    gg+
+      directlabels::geom_dl(aes(
+        N, empirical, color=expr.name, label=expr.name),
+        method="right.polygons",
+        data=best.list$meas)+
+      theme(legend.position="none")+
+      coord_cartesian(xlim=c(1e3,1e10))
+  }else{
+    gg
+  }
+}
+```
+
+atime(
+N, setup, expr.list=NULL, times=10, seconds.limit=0.01, verbose=FALSE,
+result=FALSE, ...)
+
+```{r}
+## Example 1: polynomial and exponential time string functions.
+string.result <- atime::atime(
+  N=unique(as.integer(10^seq(0,3.5,l=100))),
+  setup={
+    subject <- paste(rep("a", N), collapse="")
+    pattern <- paste(rep(c("a?", "a"), each=N), collapse="")
+  },
+  seconds.limit=0.001,
+  PCRE.match=regexpr(pattern, subject, perl=TRUE),
+  TRE.match=regexpr(pattern, subject, perl=FALSE),
+  constant.replacement=gsub("a","constant size replacement",subject),
+  linear.replacement=gsub("a",subject,subject))
+plot(string.result)
+
+## Example 2: split data table vs frame, constant factor difference.
+library(data.table)
+split.result <- atime::atime(
+  setup={
+    set.seed(1)
+    DT <- data.table(
+      x1 = rep(c("c","d"), l=N),
+      x2 = rep(c("x","y"), l=N),
+      x3 = rep(c("a","b"), l=N),
+      y = rnorm(N)
+    )[sample(.N)]
+    DF <- as.data.frame(DT)
+  },
+  seconds.limit=0.001,
+  frame=split(DF[names(DF) != "x1"], DF["x1"], drop = TRUE),
+  table=split(DT, by = "x1", keep.by = FALSE, drop = TRUE)
+)
+plot(split.result)
+```
+
+
+```
+
+
+Modify the atime vignette: Edit the atime vignette to reflect any changes or additions you want to make. You can use the existing structure of the vignette as a guide and add new code examples or explanations as needed. Make sure to save the modified vignette.
+```{r}
+
+```
+
+
+Analyze the efficiency of the packages: To analyze the efficiency of the polars, arrow, collapse, and spark packages, you can perform benchmarking or comparison tests. Create a set of representative tasks or operations that are commonly performed using these packages. Measure the execution time and resource usage (e.g., memory consumption) for each package on the same dataset or workload.
+
+Compare the results: Analyze the benchmarking or comparison results to evaluate the efficiency of each package. Consider factors such as execution time, memory usage, ease of use, and compatibility with other tools or packages. Document your findings and observations.
+
+Draw conclusions: Based on the analysis, draw conclusions about the efficiency and performance characteristics of the polars, arrow, collapse, and spark packages. Identify any strengths or weaknesses of each package and provide recommendations or insights for their usage in different contexts.
+
+Remember to consult the documentation and official resources for each package to ensure accurate usage and interpretation of their functionalities and performance metrics.
