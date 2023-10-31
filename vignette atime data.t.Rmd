@@ -29,8 +29,14 @@ library(readr)
 library(arrow)
 library(ggplot2)
 library(collapse)
-library(sparklyr)
+#library(sparklyr)
+library(polars)
+library(dplyr)
+library(plyr)
+library(tidyr)
+library(stats)
 
+#sc <- sparklyr::spark_connect(master = "local")
 ```
 
 ```{r}
@@ -38,12 +44,15 @@ write.colors <- c(
   "readr::write_csv"="#9970AB",
   "data.table::fwrite"="#D6604D",
   "write_csv_arrow"="#BF812D", 
-  "write.csv2" = "#722f37",
-  "spark_read_csv"= "pink",
+  "polars::write_csv"="#33A02C",
+  "write_CSV_COllapse" = "#722f37",
+  #"write_csv_spark"= "pink",
+  "write.csv2"= "#1F78B4",
   "utils::write.csv"="deepskyblue")
 
 n.rows <- 100
 seconds.limit <- 1
+
 
 atime.write.vary.cols <- atime::atime(
   N=as.integer(10^seq(2, 6, by=0.5)),
@@ -52,6 +61,8 @@ atime.write.vary.cols <- atime::atime(
     input.vec <- rnorm(n.rows*N)
     input.mat <- matrix(input.vec, n.rows, N)
     input.df <- data.frame(input.mat)
+    #spark_df<- copy_to(sc,input.mat, name = "spark_df")
+    
   },
   seconds.limit = seconds.limit,
   "data.table::fwrite"={
@@ -63,11 +74,22 @@ atime.write.vary.cols <- atime::atime(
   "readr::write_csv"={
     readr::write_csv(input.df, tempfile(), progress = FALSE)
   },
+  "polars::write_csv" = {
+    write_csv(input.df, tempfile())
+  },
+  "write_csv_collapse"={
+    write.csv(input.df,tempfile())
+  },
+  #"write_csv_spark"={
+    #spark_write_csv(spark_df, tempfile(), mode = "overwrite")
+  #},
   "write.csv2" = {
     write.csv2(input.df, tempfile())
   },
-  "spark_write_csv" = spark_write_csv(input.df,tempfile(),TRUE),
-  "utils::write.csv"=utils::write.csv(input.df, tempfile()))
+  "utils::write.csv"= {
+    utils::write.csv(input.df, tempfile())
+  }
+)
 ```
 
 
@@ -101,8 +123,11 @@ read.colors <- c(
   "readr::read_csv\n(lazy=FALSE)"="#9970AB",
   "data.table::fread"="#D6604D",
   "read_csv_arrow"="#BF812D",
-  "read.csv2" = "#722f37",
+  "polars::read_csv"="#33A02C",
+  "read_csv_collapse"="#722f37",
+  "read.csv2" = "#1F78B4",
   "utils::read.csv"="deepskyblue")
+
 atime.read.vary.cols <- atime::atime(
   N=as.integer(10^seq(2, 6, by=0.5)),
   setup={
@@ -125,6 +150,12 @@ atime.read.vary.cols <- atime::atime(
   },
   "readr::read_csv\n(lazy=FALSE)"={
     readr::read_csv(input.csv, progress = FALSE, show_col_types = FALSE, lazy=FALSE)
+  },
+  "polars::read_csv" = {
+    read_csv(input.csv)
+  },
+  "read_csv_collapse"={
+    read.csv(input.csv)
   },
    "read.csv2" = {
     read.csv2(input.csv)
@@ -156,11 +187,15 @@ gg.read
 
 Summarize by group
 
+
+
 ```{r}
 ml.colors <- c(
   "dplyr::summarise"="#9970AB",
   "[.data.table"="#D6604D",
-  "stats::aggregate"="deepskyblue")
+  "stats::aggregate"="deepskyblue",
+  "plyr::ddply"="orange",
+  "tidyr::pivot_longer"="green")
 options(dplyr.summarise.inform=FALSE)
 n.folds <- 10
 ml.atime <- atime::atime(
@@ -194,6 +229,23 @@ ml.atime <- atime::atime(
       subset(res, select=-loss), 
       do.call(rbind, res$loss))
   },
+  "plyr::ddply"={
+    ddply(loss.dt, c("set", "epoch"), summarize,
+          loss_length = length(loss),
+          loss_mean = mean(loss),
+          loss_sd = sd(loss))
+  },
+  "tidyr::pivot_longer"={
+    tidy_data <- pivot_longer(loss.dt, cols = starts_with("loss"), names_to = "GroupVar", values_to = "NumericVar")
+    
+    summary_data <- tidy_data %>%
+      group_by(set, epoch) %>%
+      summarise(
+        loss_length = length(NumericVar),
+        loss_mean = mean(NumericVar),
+        loss_sd = sd(NumericVar)
+      )
+    },
   "dplyr::summarise"={
     loss.dt |> 
       dplyr::group_by(set, epoch) |> 
@@ -202,6 +254,7 @@ ml.atime <- atime::atime(
         loss_mean=mean(loss), 
         loss_sd=sd(loss))
   })
+
 ```
 
 
